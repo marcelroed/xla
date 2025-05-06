@@ -5052,8 +5052,14 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
   cudnn_frontend::graph::SDPA_attributes sdpa_options;
   sdpa_options.set_name("flash_attention")
       .set_is_inference(stats_descriptor == std::nullopt)
-      .set_causal_mask(is_causal)
+      // .set_causal_mask(is_causal)
       .set_attn_scale(scale);
+  
+  if (is_causal) {
+    sdpa_options
+      .set_diagonal_band_right_bound(0)
+      .set_diagonal_alignment(cudnn_frontend::DiagonalAlignment_t::BOTTOM_RIGHT);
+  }
 
   // Setting bias
   if (bias_descriptor.has_value()) {
@@ -5676,9 +5682,15 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   auto sdpa_backward_options =
       cudnn_frontend::graph::SDPA_backward_attributes()
           .set_name("flash_attention_backward")
-          .set_causal_mask(is_causal)
+          // .set_causal_mask(is_causal)
           .set_attn_scale(scale)
           .set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
+  
+  if(is_causal) {
+    sdpa_backward_options
+      .set_diagonal_band_right_bound(0)
+      .set_diagonal_alignment(cudnn_frontend::DiagonalAlignment_t::BOTTOM_RIGHT);
+  }
 
   auto next_uid = [uid = 0]() mutable -> int { return CuDnnTensorUID(uid++); };
 
@@ -5831,7 +5843,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   }
 
   if (sliding_window_length > 0) {
-    sdpa_backward_options.set_sliding_window_length(sliding_window_length);
+    sdpa_backward_options
+      .set_diagonal_band_left_bound(sliding_window_length);
   }
 
   auto [dQ, dK, dV] =
